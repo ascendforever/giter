@@ -57,9 +57,30 @@ __all__ = [
 import io
 import itertools
 import builtins
+import types
 
-from glite.__common import *
-from glite import *
+import typing as t
+import collections as col
+import collections.abc as abcs
+
+T = t.TypeVar('T')
+
+sentinel = object()
+
+@t.runtime_checkable
+class SizedIterable(t.Protocol):
+    def __iter__(self): ...
+    def __len__(self): ...
+
+def natural_commas(texts:abcs.Iterable[str], delimiter=',', last_delimiter='and') -> str:
+    lt = len(texts)
+    if lt >= 3: return f"{f'{delimiter} '.join(texts[:-1])}{delimiter} {last_delimiter} {texts[-1]}"
+    if lt == 2: return f"{texts[0]} {last_delimiter} {texts[1]}"
+    if lt == 1: return texts[0]
+    return ''
+
+# from glite.__common import *
+# from glite import *
 
 class Chain(t.Generic[T], abcs.Iterator[T]):
     """Better than itertools.chain when chaining a large amount items that may contain other chains because this unpacks other chains
@@ -219,7 +240,7 @@ class SizedChain(t.Generic[T], Chain[T]):
     # __match_args__ = ('_its',) # defined in parent
     def __next__(self) -> T:
         """More preferable to call iter() first if doing this multiple times"""
-        its:col.deque[proto.SizedIterable[T]] = self._its
+        its:col.deque[SizedIterable[T]] = self._its
         __next = next
         __its_popleft = its.popleft
         __sentinel = sentinel
@@ -231,31 +252,31 @@ class SizedChain(t.Generic[T], Chain[T]):
             return res
         raise StopIteration
     if t.TYPE_CHECKING:
-        def __init__(self, *its:proto.SizedIterable[T]):
+        def __init__(self, *its:SizedIterable[T]):
             super().__init__(*its)
-            self._its:col.deque[proto.SizedIterable[T]] = col.deque()
+            self._its:col.deque[SizedIterable[T]] = col.deque()
         @classmethod
-        def from_iterable(cls, its:proto.SizedIterable[T]) -> SizedChain[T]: ...
+        def from_iterable(cls, its:SizedIterable[T]) -> SizedChain[T]: ...
         @classmethod
-        def from_its(cls, *its:proto.SizedIterable[T]) -> SizedChain[T]: ...
+        def from_its(cls, *its:SizedIterable[T]) -> SizedChain[T]: ...
         @classmethod
-        def from_iterable_its(cls, its:abcs.Iterable[proto.SizedIterable[T]]) -> SizedChain[T]: ...
+        def from_iterable_its(cls, its:abcs.Iterable[SizedIterable[T]]) -> SizedChain[T]: ...
         @classmethod
         def from_chains(cls, *chains:SizedChain[T]) -> SizedChain[T]: ...
         @classmethod
         def from_iterable_chains(cls, chains:abcs.Iterable[SizedChain[T]]) -> SizedChain[T]: ...
-        def extendleft(self, its:abcs.Reversible[proto.SizedIterable[T]]) -> None: ...
+        def extendleft(self, its:abcs.Reversible[SizedIterable[T]]) -> None: ...
         def extendleft_chains(self, it:SizedChain[T]) -> None: ...
-        def extendleft_its(self, its:abcs.Reversible[proto.SizedIterable[T]]) -> None: ...
-        def extend(self, its:abcs.Iterable[proto.SizedIterable[T]]) -> None: ...
+        def extendleft_its(self, its:abcs.Reversible[SizedIterable[T]]) -> None: ...
+        def extend(self, its:abcs.Iterable[SizedIterable[T]]) -> None: ...
         def extend_chains(self, it:SizedChain[T]) -> None: ...
-        def extend_its(self, its:abcs.Iterable[proto.SizedIterable[T]]) -> None: ...
-        def append(self, it:proto.SizedIterable[T]) -> None: ...
+        def extend_its(self, its:abcs.Iterable[SizedIterable[T]]) -> None: ...
+        def append(self, it:SizedIterable[T]) -> None: ...
         def append_chain(self, it:SizedChain[T]) -> None: ...
-        def append_it(self, it:proto.SizedIterable[T]) -> None: ...
-        def appendleft(self, it:proto.SizedIterable[T]) -> None: ...
+        def append_it(self, it:SizedIterable[T]) -> None: ...
+        def appendleft(self, it:SizedIterable[T]) -> None: ...
         def appendleft_chain(self, it:SizedChain[T]) -> None: ...
-        def appendleft_it(self, it:proto.SizedIterable[T]) -> None: ...
+        def appendleft_it(self, it:SizedIterable[T]) -> None: ...
     def __len__(self) -> int:
         its = self._its
         while its and not its[0]: its.popleft() # remove empties
@@ -266,6 +287,7 @@ class SizedChain(t.Generic[T], Chain[T]):
             if its[0]: return True
             else: its.popleft() # remove empties
         return False
+
 
 def iterator_not_empty(it:abcs.Iterator[T]) -> t.Optional[abcs.Iterator[T]]:
     """Check if an iterator is empty - returns an equivalent version of the iterator if not empty else None
@@ -302,7 +324,8 @@ class _SuperIteratorMeta(type):
     else: _saved_mapping_ = None
     @property
     def _mapping_(cls) -> types.MappingProxyType[tuple[_SuperIteratorBase,...], tuple[_SuperIteratorBase,...]]:
-        if saved:=(thismeta:=cls.__class__)._saved_mapping_:
+        """Mapping of classes and their "virtual" subclasses"""
+        if (saved:=(thismeta:=cls.__class__)._saved_mapping_):
             return saved
         if super(thismeta.__class__, thismeta) == type:
             raise TypeError(f"{thismeta.__name__} must inherit from {type.__name__}; It inherits from {super(thismeta.__class__, thismeta)}")
@@ -316,7 +339,7 @@ class _SuperIteratorMeta(type):
             (EmptySizedIterator,): (EmptyExtensibleSizedIterator,),
         })
         _isinstance = isinstance
-        if bad:={c.__name__ for c in itertools.chain.from_iterable(itertools.chain(m.keys(), m.values())) if not _isinstance(c, thismeta)}:
+        if (bad:={c.__name__ for c in itertools.chain.from_iterable(itertools.chain(m.keys(), m.values())) if not _isinstance(c, thismeta)}):
             raise TypeError(f"{natural_commas(bad)} must have {thismeta.__name__} as their metaclass as they are connected to important virtual inherits")
         thismeta._saved_mapping_ = m
         return m
@@ -336,13 +359,28 @@ class _SuperIteratorMeta(type):
         return _type___subclasscheck__(cls, instance)
     # def __new__(cls, *args, **kwargs):
     #     return super().__new__(cls, *args, **kwargs)
-class _SuperIteratorBase(metaclass=_SuperIteratorMeta): # This is essentially just an alias for object, primarily for use in object.__new__(cls)
+
+class SIInitSubclassDict(t.TypedDict):
+    __vrs__:dict[str,t.Any]
+    __super_called__:bool
+    __extensible_called:bool
+    __extensiblesized_called__:bool
+    __sized_called__:bool
+    __empty_called__:bool
+    __emptysuper_called__:bool
+    __emptysized_called__:bool
+    __emptyextensiblesized_called__:bool
+    __dead_called__:bool
+
+class _AllBase:
     __slots__ = ('_it','_length', '_suffix', '_previous_cls', '__weakref__')
     __match_args__ = ('_it','_raw')
+class _SuperIteratorBase(_AllBase, metaclass=_SuperIteratorMeta):
+    __slots__ = ()
     @classmethod
     def _init_all_subclass(cls, subclass, kwargs:dict[str, t.Any], *, virtual:bool=False) -> SIInitSubclassDict:
         """Used to init all subclasses, and their subclasses
-        Returns an SIInitSubclassDict, and pla"""
+        Returns an SIInitSubclassDict"""
         skwargs:SIInitSubclassDict
         if (skwargs:=kwargs.get('__skwargs__')) is None:
             kwargs['__skwargs__'] = skwargs = {}
@@ -361,16 +399,16 @@ class _SuperIteratorBase(metaclass=_SuperIteratorMeta): # This is essentially ju
         """Should always return `CLASS_DEFINING_THIS_METHOD._init_all_subclass(cls, kwargs)`"""
         return _SuperIteratorBase._init_all_subclass(cls, kwargs)
 
-class _EmptySuperIteratorMixinABC(metaclass=_SuperIteratorMeta):
+class _EmptySuperIteratorMixinABC(_AllBase, metaclass=_SuperIteratorMeta):
     __slots__ = ()
     def _inner_repr(self) -> str:
         return f"{getattr(cls:=self.__class__, '_corresponding_class', cls).__name__}[{it._inner_repr() if isinstance(it:=self._it, EmptyIterator) else it}]"
-class _ExtensibleIteratorMixinABC(metaclass=_SuperIteratorMeta):
+class _ExtensibleIteratorMixinABC(_AllBase, metaclass=_SuperIteratorMeta):
     __slots__ = ()
     @property
     def suffix(self):
         return self._suffix
-class _ExtensibleSizedIteratorMixinABC(metaclass=_SuperIteratorMeta):
+class _ExtensibleSizedIteratorMixinABC(_AllBase, metaclass=_SuperIteratorMeta):
     __slots__ = ()
     def __init_subclass__(cls, **kwargs):
         """Raises TypeError if __slots__ is not defined or nonempty, or if new methods are defined that are not classmethods/staticmethods/properties"""
@@ -392,50 +430,42 @@ class _ExtensibleSizedIteratorMixinABC(metaclass=_SuperIteratorMeta):
 # else:
 #     def init_subclass(parent, subclass, kwargs:dict[str,t.Any]):
 #         return parent.__getattribute__(parent, '__init_subclass__').__get__(None, subclass)(**kwargs)
-class SIInitSubclassDict(t.TypedDict):
-    __vrs__:dict[str,t.Any]
-    __super_called__:bool
-    __extensible_called:bool
-    __extensiblesized_called__:bool
-    __sized_called__:bool
-    __empty_called__:bool
-    __emptysuper_called__:bool
-    __emptysized_called__:bool
-    __emptyextensiblesized_called__:bool
-    __dead_called__:bool
-def _magic_init_subclass(cls, vars_get:None|abcs.Callable[[str], t.Any]=None, *,
-                         required_defined:None|abcs.Sequence[str]=None,
-                         required_undefined:None|abcs.Sequence[str]=None,
-                         meta_getattribute:None|abcs.Callable[[str], t.Any]=None,
-                         required_defined_within_hierarchy:None|abcs.Sequence[str]=None,
-                         required_undefined_within_hierarchy:None|abcs.Sequence[str]=None) -> None:
-    """init sublcass helper"""
-    doing_hieracrhy = False
-    if (doing_ns:=(required_defined or required_undefined)) or (doing_hieracrhy:=(required_defined_within_hierarchy or required_undefined_within_hierarchy)):
-        stream = None
+
+def _magic_init_subclass(cls,
+    vars_get:None|abcs.Callable[[str], t.Any]=None,
+    *,
+    required_defined:None|abcs.Sequence[str]=None,
+    required_undefined:None|abcs.Sequence[str]=None,
+    meta_getattribute:None|abcs.Callable[[str], t.Any]=None,
+    required_defined_within_hierarchy:None|abcs.Sequence[str]=None,
+    required_undefined_within_hierarchy:None|abcs.Sequence[str]=None,
+) -> None:
+    """init subclass helper"""
+    doing_hierarchry = False
+    if (doing_ns:=(required_defined or required_undefined)) or (doing_hierarchry:=(required_defined_within_hierarchy or required_undefined_within_hierarchy)):
+        lines = []
         try:
             repr = builtins.repr
             if doing_ns:
                 if vars_get is None:
-                    (stream or io.StringIO()).write("\nvars_get must be passed as kwarg if checking within namespace at all")
+                    lines.append("vars_get must be set if checking within namespace at all")
                 else:
                     if required_defined   and (l:=[repr(attr) for attr in required_defined if not vars_get(attr)]):
-                        (stream or io.StringIO()).write(f"\n{natural_commas(l)} {'are' if len(l) > 1 else 'is'} not defined in {cls.__name__} but must be")
-                    if required_undefined and (l:=[repr(attr) for attr in required_undefined   if     vars_get(attr)]):
-                        (stream or io.StringIO()).write(f"\n{natural_commas(l)} {'are' if len(l) > 1 else 'is'} defined in {cls.__name__} but must not be")
-            if doing_hieracrhy:
+                        lines.append(f"{natural_commas(l)} {'are' if len(l) > 1 else 'is'} not defined in {cls.__name__} but must be")
+                    if required_undefined and (l:=[repr(attr) for attr in required_undefined if   vars_get(attr)]):
+                        lines.append(f"{natural_commas(l)} {'are' if len(l) > 1 else 'is'} defined in {cls.__name__} but must not be")
+            if doing_hierarchry:
                 if meta_getattribute is None:
-                    (stream or io.StringIO()).write("\nmeta_getattribute must be passed as kwarg if checking within hierarchy at all")
+                    lines.append("meta_getattribute must be passed as kwarg if checking within hierarchy at all")
                 else:
                     if required_defined_within_hierarchy   and (l:=[repr(attr) for attr in required_defined_within_hierarchy if not meta_getattribute(attr)]):
-                        (stream or io.StringIO()).write(f"\n{natural_commas(l)} {'are' if len(l) > 1 else 'is'} not defined in {cls.__name__} *or parents* but must be")
-                    if required_undefined_within_hierarchy and (l:=[repr(attr) for attr in required_undefined_within_hierarchy if meta_getattribute(attr)]):
-                        (stream or io.StringIO()).write(f"\n{natural_commas(l)} {'are' if len(l) > 1 else 'is'} defined in {cls.__name__} *or parents* but must not be")
-            if stream and stream.tell(): # position isn't zero, so we have written something
-                raise TypeError(stream.getvalue())
+                        lines.append(f"{natural_commas(l)} {'are' if len(l) > 1 else 'is'} not defined in {cls.__name__} *or parents* but must be")
+                    if required_undefined_within_hierarchy and (l:=[repr(attr) for attr in required_undefined_within_hierarchy if   meta_getattribute(attr)]):
+                        lines.append(f"{natural_commas(l)} {'are' if len(l) > 1 else 'is'} defined in {cls.__name__} *or parents* but must not be")
         finally:
-            if stream:
-                stream.close()
+            if lines:
+                raise TypeError('\n'.join(lines))
+
 class SuperIterator(t.Generic[T], _SuperIteratorBase): # , abcs.Iterator[T]):
     """An intelligent high level iterator implementation
     Be very careful when subclassing
@@ -463,15 +493,14 @@ class SuperIterator(t.Generic[T], _SuperIteratorBase): # , abcs.Iterator[T]):
     @t.overload
     def __new__(cls, obj:EmptyIterator) -> EmptyIterator: ...
     @t.overload
-    def __new__(cls, obj:proto.SizedIterable[T]) -> SizedIterator[T]: ...
+    def __new__(cls, obj:SizedIterable[T]) -> SizedIterator[T]: ...
     @t.overload
     def __new__(cls, obj:abcs.Iterable[T]) -> SuperIterator[T]: ...
     def __new__(cls, obj:abcs.Iterable[T]) -> SuperIterator[T]:
         """Slowest and safest constructor"""
-        if isinstance(obj, SuperIterator):
-            return obj
+        if isinstance(obj, SuperIterator): return obj
         if not obj: return EmptyIterator(obj)
-        if isinstance(obj, proto.SizedIterable): # we should use abcs.Sized but that annoys type checker so it doesn't matter
+        if isinstance(obj, SizedIterable): # we should use abcs.Sized but that annoys type checker so it doesn't matter
             return sized_iterator_from_raw(iter(obj), len(obj))
         return super_iterator_from_raw(iter(obj))
     @property
@@ -480,7 +509,8 @@ class SuperIterator(t.Generic[T], _SuperIteratorBase): # , abcs.Iterator[T]):
         return self._it
     def _COERCE_empty(self) -> None:
         self.__class__ = EmptySuperIterator
-    @t.final # we always wan't to keep ourselves the iterator, so we force this to not change
+        self._previous_cls = type(self._it)
+    @t.final # we always want to keep ourselves the iterator, so we force this to not change
     def __iter__(self):
         return self
     @t.final
@@ -517,7 +547,7 @@ class SuperIterator(t.Generic[T], _SuperIteratorBase): # , abcs.Iterator[T]):
             raise StopIteration
         return obj
     def __bool__(self) -> bool:
-        if res:=iterator_not_empty(self._it): # we don't do a none check, because if we created without checking if it==smartiterator, then this will check size too if its a sizediterator
+        if (res:=iterator_not_empty(self._it)): # we don't do a none check, because if we created without checking if it==smartiterator, then this will check size too if its a sizediterator
             self._it = res
             return True
         self._COERCE_empty()
@@ -530,7 +560,7 @@ class SuperIterator(t.Generic[T], _SuperIteratorBase): # , abcs.Iterator[T]):
             yield obj
         self._COERCE_empty()
     def iter_unsafe(self) -> abcs.Iterator[T]:
-        """Fastest form of iteration; Use if self._it will NOT be touched at all during iteration (ex: in an asynchronous environment) (it is modified by __bool__ for example)"""
+        """Fastest form of iteration; Use if self._it will NOT be touched at all during iteration (it is modified by __bool__ for example)"""
         it = self._it
         self._COERCE_empty()
         return it
@@ -550,7 +580,7 @@ class SuperIterator(t.Generic[T], _SuperIteratorBase): # , abcs.Iterator[T]):
 class ExtensibleIterator(t.Generic[T], SuperIterator[T], _ExtensibleIteratorMixinABC):
     """Allows for an iterator which can have items appended to the end
     When initializing from another instance, the previous instance and new instance will be modified such that the new suffix is appended to the old
-    Logically wraps an iterator and a deque, with the iterator in front and the deque in the back
+    Logically wraps an iterator and a lazy deque, with the iterator in front and the lazy deque in the back
     [Created 3/31/22 // Made a smart iterator 4/18/22]"""
     __slots__ = ()
     __match_args__ = SuperIterator.__match_args__ + ('_suffix',)
@@ -570,7 +600,7 @@ class ExtensibleIterator(t.Generic[T], SuperIterator[T], _ExtensibleIteratorMixi
     @t.overload
     def __new__(cls, obj:SizedIterator[T]|ExtensibleSizedIterator[T], suffix:col.deque[T]|LazyDeque[T]|None=None) -> ExtensibleSizedIterator[T]: ...
     @t.overload
-    def __new__(cls, obj:proto.SizedIterable[T], suffix:col.deque[T]|LazyDeque[T]|None=None) -> ExtensibleSizedIterator[T]|EmptyIterator: ...
+    def __new__(cls, obj:SizedIterable[T], suffix:col.deque[T]|LazyDeque[T]|None=None) -> ExtensibleSizedIterator[T]|EmptyIterator: ...
     @t.overload
     def __new__(cls, obj:SuperIterator[T], suffix: col.deque[T] | LazyDeque[T] | None=None) -> ExtensibleIterator[T]: ...
     @t.overload
@@ -582,7 +612,7 @@ class ExtensibleIterator(t.Generic[T], SuperIterator[T], _ExtensibleIteratorMixi
             return extensible_sized_iterator_from_sized(obj, suffix)
         if isinstance(obj, SuperIterator): # yes we catch ExtensibleIterator as we want
             return extensible_iterator_from_super(obj, suffix)
-        if isinstance(obj, proto.SizedIterable): # we should use abcs.Sized but that annoys type checker so it doesn't matter
+        if isinstance(obj, SizedIterable): # we should use abcs.Sized but that annoys type checker so it doesn't matter
             return extensible_sized_iterator_from_sized(sized_iterator_from_raw(iter(obj), len(obj)), suffix)
         return extensible_iterator_from_raw(iter(obj))
     @property
@@ -592,6 +622,7 @@ class ExtensibleIterator(t.Generic[T], SuperIterator[T], _ExtensibleIteratorMixi
         return self._it._raw
     def _COERCE_empty(self) -> None:
         self.__class__ = EmptyExtensibleIterator
+        self._previous_cls = type(self._it)
     if t.TYPE_CHECKING:
         @t.final
         def map(self, func:abcs.Callable[[T], Y]) -> ExtensibleIterator[Y]: ...
@@ -668,6 +699,7 @@ class ExtensibleSizedIterator(t.Generic[T], ExtensibleIterator[T], _ExtensibleSi
         return extensible_sized_iterator_from_sized(SizedIterator(obj, length))
     def _COERCE_empty(self) -> None:
         self.__class__ = EmptyExtensibleIterator
+        self._previous_cls = type(self._it._raw._raw)
     @property
     def length_it(self) -> int:
         return len(self._it)
@@ -725,6 +757,7 @@ class SizedIterator(t.Generic[T], SuperIterator[T]): # , abcs.Sized):
     def _COERCE_empty(self) -> None:
         self.__class__ = EmptySizedIterator
         del self._length
+        self._previous_cls = type(self._it._raw)
     if t.TYPE_CHECKING:
         @t.final
         def map(self, func:abcs.Callable[[T], Y]) -> SizedIterator[Y]:
@@ -738,7 +771,7 @@ class SizedIterator(t.Generic[T], SuperIterator[T]): # , abcs.Sized):
                 raise ValueError(f"{self.__class__.__name__} ended unexpectedly; Stated length was {length} less than it should have been")
             self._length -= 1
             yield obj
-        if not (length:=self._length):
+        if (length:=self._length):
             raise ValueError(f"{self.__class__.__name__} ended unexpectedly; Stated length was {length} greater than it should have been")
         self._COERCE_empty()
     def iter_unsafe(self) -> abcs.Iterator[T]:
@@ -820,7 +853,7 @@ class EmptyIterator(_SuperIteratorBase):
     @property
     def _raw(self) -> abcs.Iterator[T]:
         """Returns an empty iterator every time; Subclasses won't always"""
-        return DeadIterator.DEFAULT._raw
+        return DeadIterator._dead_raw_iterator
     def _COERCE_dead(self) -> None:
         self.__class__ = DeadIterator
     if t.TYPE_CHECKING:
@@ -829,7 +862,7 @@ class EmptyIterator(_SuperIteratorBase):
     @t.final
     def flatten(self) -> abcs.Iterator[T]:
         """Pointless call"""
-        return DeadIterator._dead_raw_iterator
+        return self
     @t.final
     def as_chain(self) -> Chain[T]:
         return Chain.blank()
@@ -869,14 +902,14 @@ class EmptyIterator(_SuperIteratorBase):
         return f"<empty {self._previous_cls}>"
     def append(self, obj:T) -> SizedIterator[T]:
         """Coerces to a SizedIterator (or ExtensibleIterator if that's what we used to be) with a single item `obj` and returns self after appending"""
-        self._it = iter([obj])
+        self._it = iter((obj,))
         self._length = 1
         self.__class__ = SizedIterator
         del self._previous_cls
         return self
     def extend(self, iterable:abcs.Iterable[T]) -> SuperIterator[T]|SizedIterator[T]:
         """Coerces to a SuperIterator/SizedIterator with all items in iterable and returns self after extension"""
-        if isinstance(iterable, proto.SizedIterable):
+        if isinstance(iterable, SizedIterable):
             self._it = iter(iterable)
             self._length = len(iterable)
             self.__class__ = SizedIterator
@@ -924,12 +957,6 @@ class EmptySuperIterator(EmptyIterator, _EmptySuperIteratorMixinABC): # , abcs.R
         if isinstance(source, SizedIterator          ): return empty_sized_iterator_from_any_iterator(source)
         if isinstance(source, SuperIterator          ): return empty_super_iterator_from_any_iterator(source)
         return empty_super_iterator_from_any_iterator(DeadIterator._dead_raw_iterator if source is None else iter(source))
-    def __new__(cls, source:None|abcs.Iterable=None) -> EmptySuperIterator:
-        if source is None:
-            return empty_super_iterator_from_any_iterator(DeadIterator._dead_raw_iterator) # DEFAULT will have a repr of DeadIterator[iterator]
-        if isinstance(source, DeadIterator):
-            return
-        return empty_super_iterator_from_any_iterator(iter(source))
     @property
     def _raw(self) -> abcs.Iterator[T]:
         """Get the root raw iterator; Very unsafe"""
@@ -977,7 +1004,7 @@ class EmptySizedIterator(EmptySuperIterator):
         if isinstance(source, (SuperIterator, EmptyIterator)): return empty_sized_iterator_from_any_iterator(source) # catches SuperIterator & SizedIterator & EmptyIterator & DeadIterator
         return empty_sized_iterator_from_any_iterator(DeadIterator._dead_raw_iterator if source is None else iter(source))
     def append(self, obj:T) -> SizedIterator[T]:
-        """Coerces back to a SuperIterator with the sole item `obj`"""
+        """Coerces back to a SizedIterator with the sole item `obj`"""
         # self._suffix.append(obj)
         self._it = super_iterator_from_raw(iter([obj]))
         self._length = 1
@@ -992,8 +1019,8 @@ class EmptySizedIterator(EmptySuperIterator):
             if isinstance(iterable, SizedIterator):
                 self._it = iterable
                 self._length = len(iterable)
-            elif isinstance(iterable, proto.SizedIterable):
-                self._it = super_iterator_from_raw(iterable)
+            elif isinstance(iterable, SizedIterable):
+                self._it = super_iterator_from_raw(iter(iterable))
                 self._length = len(iterable)
             else:
                 if isinstance(iterable, SuperIterator):
@@ -1025,7 +1052,7 @@ class EmptyExtensibleIterator(EmptySuperIterator, _ExtensibleIteratorMixinABC):
     @t.overload
     def __new__(cls, source:None|abcs.Iterable=None) -> EmptyExtensibleIterator: ...
     def __new__(cls, source:None|abcs.Iterable=None) -> EmptyExtensibleIterator:
-        if isinstance(source, SizedIterator): # we would use proto.SizedIterable but that would catch all Emptys
+        if isinstance(source, SizedIterator): # we would use SizedIterable but that would catch all Emptys
             return empty_extensible_sized_iterator_from_any_iterator(source)
         return empty_extensible_iterator_from_any_iterator(DeadIterator._dead_raw_iterator if source is None else iter(source))
     @t.final
@@ -1796,7 +1823,7 @@ class LazyDeque(t.Generic[T], LazyList[T]):
     def __init__(self, deque:col.deque[T], it:abcs.Iterator[T], /): ...
     def __init__(self, it=None, deque=None, /):
         if it is deque is None:
-            it:SuperIterator[T] = EmptyIterator.DEFAULT
+            it:SuperIterator[T] = EmptyIterator()
             deque:col.deque[T] = col.deque()
         elif deque is None:
             it:abcs.Iterator[T] = it # becomes smart in parent __init__
