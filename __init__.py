@@ -302,22 +302,22 @@ def iterator_not_empty(it:abcs.Iterator[T]) -> t.Optional[abcs.Iterator[T]]:
 
 # └ ┌  ┐ ┘ ─ │ ┴ ┬ ┼
 
-                 _SuperIteratorMeta
-                        \\│//    └─>──>──>──>──>──>──┬──┬──┐
-                 _SuperIteratorBase                  │  │ _EmptySuperIteratorMixinABC
-           ┌───────┘      │      └──────────────┐    │ _ExtensibleIteratorMixinABC
-           │         SuperIterator              │   _ExtensibleSizedIteratorMixinABC
-        ┌──│───────┬──────┴────────┐            │
-        │  │  SizedIterator  ExtensibleIterator │
-      ┌─│──│──<v>──┘    └─<v>─┐    │            │
-      │ │  └──────────┐ ExtensibleSizedIterator │
-      │ └──<v>──┐ EmptyIterator                 │
-      │         │     │     └───────<v>───────┐ │
-      │        EmptySuperIterator             │ │
-      │         │     │       └─────<v>─────┐ │ │
-EmptySizedIterator  EmptyExtensibleIterator │ │ │
-            └─<v>─┐       │           DeadIterator
-             EmptyExtensibleSizedIterator
+#                  _SuperIteratorMeta
+#                         \\│//    └─>──>──>──>──>──>──┬──┬──┐
+#                  _SuperIteratorBase                  │  │ _EmptySuperIteratorMixinABC
+#            ┌───────┘      │      └──────────────┐    │ _ExtensibleIteratorMixinABC
+#            │         SuperIterator              │   _ExtensibleSizedIteratorMixinABC
+#         ┌──│───────┬──────┴────────┐            │
+#         │  │  SizedIterator  ExtensibleIterator │
+#       ┌─│──│──<v>──┘    └─<v>─┐    │            │
+#       │ │  └──────────┐ ExtensibleSizedIterator │
+#       │ └──<v>──┐ EmptyIterator                 │
+#       │         │     │     └───────<v>───────┐ │
+#       │        EmptySuperIterator             │ │
+#       │         │     │       └─────<v>─────┐ │ │
+# EmptySizedIterator  EmptyExtensibleIterator │ │ │
+#             └─<v>─┐       │           DeadIterator
+#              EmptyExtensibleSizedIterator
 
 class _SuperIteratorMeta(type):
     if t.TYPE_CHECKING: _saved_mapping_:None|types.MappingProxyType[tuple[_SuperIteratorBase,...], tuple[_SuperIteratorBase,...]] = None
