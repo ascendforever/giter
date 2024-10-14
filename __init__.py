@@ -47,21 +47,22 @@ __all__ = [
     'map_smart_iterators_longest',
     'map_sized_iterators_longest',
 
-
     'LazyCollection',
     'LazySeq',
     'LazyList',
     'LazyDeque',
 ]
 
+import builtins
 import io
 import itertools
-import builtins
 import types
 
-import typing as t
 import collections as col
 import collections.abc as abcs
+import typing as t
+
+
 
 T = t.TypeVar('T')
 
@@ -79,8 +80,7 @@ def natural_commas(texts:abcs.Iterable[str], delimiter=',', last_delimiter='and'
     if lt == 1: return texts[0]
     return ''
 
-# from glite.__common import *
-# from glite import *
+
 
 class Chain(t.Generic[T], abcs.Iterator[T]):
     """Better than itertools.chain when chaining a large amount items that may contain other chains because this unpacks other chains
@@ -302,22 +302,22 @@ def iterator_not_empty(it:abcs.Iterator[T]) -> t.Optional[abcs.Iterator[T]]:
 
 # └ ┌  ┐ ┘ ─ │ ┴ ┬ ┼
 
-#                  _SuperIteratorMeta
-#                         \\│//    └─>──>──>──>──>──>──┬──┬──┐
-#                  _SuperIteratorBase                  │  │ _EmptySuperIteratorMixinABC
-#            ┌───────┘      │      └──────────────┐    │ _ExtensibleIteratorMixinABC
-#            │         SuperIterator              │   _ExtensibleSizedIteratorMixinABC
-#         ┌──│───────┬──────┴────────┐            │
-#         │  │  SizedIterator  ExtensibleIterator │
-#       ┌─│──│──<v>──┘    └─<v>─┐    │            │
-#       │ │  └──────────┐ ExtensibleSizedIterator │
-#       │ └──<v>──┐ EmptyIterator                 │
-#       │         │     │     └───────<v>───────┐ │
-#       │        EmptySuperIterator             │ │
-#       │         │     │       └─────<v>─────┐ │ │
-# EmptySizedIterator  EmptyExtensibleIterator │ │ │
-#             └─<v>─┐       │           DeadIterator
-#              EmptyExtensibleSizedIterator
+                 _SuperIteratorMeta
+                        \\│//    └─>──>──>──>──>──>──┬──┬──┐
+                 _SuperIteratorBase                  │  │ _EmptySuperIteratorMixinABC
+           ┌───────┘      │      └──────────────┐    │ _ExtensibleIteratorMixinABC
+           │         SuperIterator              │   _ExtensibleSizedIteratorMixinABC
+        ┌──│───────┬──────┴────────┐            │
+        │  │  SizedIterator  ExtensibleIterator │
+      ┌─│──│──<v>──┘    └─<v>─┐    │            │
+      │ │  └──────────┐ ExtensibleSizedIterator │
+      │ └──<v>──┐ EmptyIterator                 │
+      │         │     │     └───────<v>───────┐ │
+      │        EmptySuperIterator             │ │
+      │         │     │       └─────<v>─────┐ │ │
+EmptySizedIterator  EmptyExtensibleIterator │ │ │
+            └─<v>─┐       │           DeadIterator
+             EmptyExtensibleSizedIterator
 
 class _SuperIteratorMeta(type):
     if t.TYPE_CHECKING: _saved_mapping_:None|types.MappingProxyType[tuple[_SuperIteratorBase,...], tuple[_SuperIteratorBase,...]] = None
